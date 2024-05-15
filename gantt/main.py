@@ -2,16 +2,16 @@ import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 
 # Dane dla wykresu Gantta
-tasks = ['pisanie back \n endu(Wojtek)', 'pisanie frontendu\n(Aleks)', 'integracja frontendu \nz backendem(zespołowe)', 'bug testing(Aleks)']
-start_dates = ['2024-04-25', '2024-04-25', '2024-05-13', '2024-05-16']
-end_dates = ['2024-05-13', '2024-05-13', '2024-05-16', '2024-05-19']
+tasks = ['pisanie back \n endu(Wojtek)', 'pisanie frontendu\n(Aleks)', 'integracja frontendu \nz backendem(Aleksy)']
+start_dates = ['2024-04-25', '2024-04-25', '2024-05-16']
+end_dates = ['2024-05-16', '2024-05-16', '2024-05-19']
 
 # Konwersja dat na format matplotlib
 start_dates = [mdates.datestr2num(date) for date in start_dates]
 end_dates = [mdates.datestr2num(date) for date in end_dates]
 
 # Utworzenie subplotu
-fig, ax = plt.subplots()
+fig, ax = plt.subplots(figsize=(10, 10))
 
 # Ustawienie osi X jako daty
 ax.xaxis_date()
