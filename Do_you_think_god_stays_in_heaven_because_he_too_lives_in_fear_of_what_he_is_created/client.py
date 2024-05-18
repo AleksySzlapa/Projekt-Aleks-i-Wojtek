@@ -246,7 +246,7 @@ def main():
                 listener_thread.start()
                 while True:
                     # Pozwól użytkownikowi na interakcję
-                    info = ''  # input('sex')
+                    info = ''  # input('Command: ')
                     # Obsłuż różne komendy użytkownika
                     if info == 'END':
                         ssl_socket.sendall('END'.encode())
