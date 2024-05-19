@@ -182,63 +182,81 @@ def main():
                         with server_context.wrap_socket(server_socket, server_side=True) as ssl_server_socket:
                             client_socket, client_address = ssl_server_socket.accept()
                             with client_socket:
-                                print('to to')
+
                                 data = client_socket.recv(4096).decode().split(" ")
-                                dec = input(f"{data[1]} is calling y/n:")
-                                if dec == 'n':
-                                    client_socket.sendall('conn dec'.encode())
+                                print('data', data)
+                                ssl_socket.sendall('check'.encode())
+                                ssl_socket.sendall(data[1].encode())
+                                what = ssl_socket.recv(4096).decode()
+                                ip = ssl_socket.recv(4096).decode()
+                                print(ip)
+                                ip_address, port = client_socket.getpeername()
+
+                                print('ip2', ip_address)
+                                if ip == 'run':
+                                    print('czemu')
+                                    client_socket.close()
+                                ip = ip.split(":")
+                                print("whh", ip[0], ip_address)
+                                if ip[0] != ip_address:
+                                    print('czemu2')
+                                    client_socket.close()
                                 else:
-                                    client_socket.sendall('conn act'.encode())
-                                    print('conn act')
-                                    data = client_socket.recv(4096).decode()
-                                    print('data', data)
-                                    data = json.loads(data)
-                                    p = data['p']
-                                    g = data['g']
-                                    b = secrets.randbits(8)
-                                    print('START B')
-                                    B = g ** b % p
-                                    print('END B')
-                                    client_socket.sendall(str(B).encode())
-                                    A = client_socket.recv(4096).decode()
-                                    s = int(A) ** b % p
-                                    print('s', s)
-                                    key = generate_AES_key(s)
+                                    dec = input(f"{data[1]} is calling y/n:")
+                                    if dec == 'n':
+                                        client_socket.sendall('conn dec'.encode())
+                                    else:
+                                        client_socket.sendall('conn act'.encode())
+                                        print('conn act')
+                                        data = client_socket.recv(4096).decode()
+                                        print('data', data)
+                                        data = json.loads(data)
+                                        p = data['p']
+                                        g = data['g']
+                                        b = secrets.randbits(8)
+                                        print('START B')
+                                        B = g ** b % p
+                                        print('END B')
+                                        client_socket.sendall(str(B).encode())
+                                        A = client_socket.recv(4096).decode()
+                                        s = int(A) ** b % p
+                                        print('s', s)
+                                        key = generate_AES_key(s)
 
-                                    def send_message(key, text):
+                                        def send_message(key, text):
 
-                                        ciphertext, tag, nonce = encrypt(key, text.encode())
+                                            ciphertext, tag, nonce = encrypt(key, text.encode())
 
-                                        client_socket.sendall(ciphertext)
-                                        client_socket.sendall(tag)
-                                        client_socket.sendall(nonce)
+                                            client_socket.sendall(ciphertext)
+                                            client_socket.sendall(tag)
+                                            client_socket.sendall(nonce)
 
-                                    def receive_message(key):
-                                        ciphertext = client_socket.recv(4096)
-                                        tag = client_socket.recv(4096)
-                                        nonce = client_socket.recv(4096)
+                                        def receive_message(key):
+                                            ciphertext = client_socket.recv(4096)
+                                            tag = client_socket.recv(4096)
+                                            nonce = client_socket.recv(4096)
 
-                                        text = decrypt(key, ciphertext, tag, nonce)
-                                        return text
+                                            text = decrypt(key, ciphertext, tag, nonce)
+                                            return text
 
-                                    def handle_sending(key):
-                                        while True:
-                                            message = input(f"You: ")
-                                            send_message(key, message)
+                                        def handle_sending(key):
+                                            while True:
+                                                message = input(f"You: ")
+                                                send_message(key, message)
 
-                                    def handle_receiving(key):
-                                        while True:
-                                            message = receive_message(key)
-                                            print(f"Friend: {message.decode()}")
+                                        def handle_receiving(key):
+                                            while True:
+                                                message = receive_message(key)
+                                                print(f"Friend: {message.decode()}")
 
-                                    sending_thread = threading.Thread(target=handle_sending, args=(key,))
-                                    receiving_thread = threading.Thread(target=handle_receiving, args=(key,))
+                                        sending_thread = threading.Thread(target=handle_sending, args=(key,))
+                                        receiving_thread = threading.Thread(target=handle_receiving, args=(key,))
 
-                                    sending_thread.start()
-                                    receiving_thread.start()
+                                        sending_thread.start()
+                                        receiving_thread.start()
 
-                                    sending_thread.join()
-                                    receiving_thread.join()
+                                        sending_thread.join()
+                                        receiving_thread.join()
 
                 # Rozpocznij nasłuchiwanie w oddzielnym wątku
                 listener_thread = threading.Thread(target=communicate_with_friend, args=(ssl_socket,))
@@ -287,7 +305,8 @@ def main():
                         friend_context.check_hostname = False  # Disable hostname checking for server side
                         with socket.create_connection((address[0], int(address[1]))) as friend_socket:
                             with friend_context.wrap_socket(friend_socket) as ssl_friend_socket:
-                                # ssl.match_hostname(ssl_socket.getpeercert(), address[2])
+
+
                                 ssl_friend_socket.sendall('call 2s'.encode())
                                 isAccpet = ssl_friend_socket.recv(4096).decode()
                                 if isAccpet == 'conn dec':
@@ -297,7 +316,7 @@ def main():
 
                                     g = primitive_root(p)
 
-                                    a = secrets.randbits(8)
+                                    a = secrets.randbits(20)
 
                                     ssl_friend_socket.sendall(json.dumps({'p': p, 'g': g}).encode())
 
@@ -348,7 +367,7 @@ def main():
                         ssl_socket.sendall('END'.encode())
                         ssl_socket.close()
 
-    # Po wyjściu z pętli głównej zakończ wątek nasłuchujący
+
 
     listener_thread.join()
 

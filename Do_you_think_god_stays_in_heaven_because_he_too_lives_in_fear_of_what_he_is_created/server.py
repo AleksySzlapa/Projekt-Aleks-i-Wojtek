@@ -79,7 +79,7 @@ def main():
     ca_port = 8889
 
     request_sign_csr(ca_host, ca_port)
-
+    #socket.setdefaulttimeout(5)
     # Set up the SSL context
     server_context = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
     server_context.load_cert_chain(certfile="server.crt", keyfile="server.key")
@@ -134,6 +134,18 @@ def main():
                         info = client_socket.recv(4096).decode()
                         if not info:
                             break
+                        elif info == 'check':
+                            check_ip = client_socket.recv(4096).decode()
+                            print('check_ip', check_ip)
+                            if check_ip in user_sessions:
+                                check_ip_socket = user_sessions[check_ip]
+                                print(check_ip_socket)
+                                ip_address, port = check_ip_socket.getpeername()
+                                port = str(port)
+                                print((ip_address + ':' + port))
+                                client_socket.sendall((ip_address + ':' + port).encode())
+                            else:
+                                client_socket.sendall('run'.encode())
                         elif info == "friends":
                             cur.execute('SELECT user_1, user_2 FROM friends WHERE user_1 = ? OR user_2 = ?', (id, id))
                             friends_list_data = cur.fetchall()
