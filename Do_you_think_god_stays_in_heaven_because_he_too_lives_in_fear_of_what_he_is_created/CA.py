@@ -145,7 +145,7 @@ def client_handler(client_socket, ca_certificate, ca_private_key):
 def main():
     logging.basicConfig(level=logging.INFO)
     ca_host = 'localhost'
-    ca_port = 8889
+    ca_port = 7070
 
     try:
         private_ca_key = generate_private_key()

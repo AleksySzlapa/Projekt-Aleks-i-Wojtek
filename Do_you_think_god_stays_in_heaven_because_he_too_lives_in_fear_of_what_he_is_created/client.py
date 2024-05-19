@@ -137,11 +137,11 @@ def decrypt(key, ciphertext, tag, nonce):
 
 def main():
     ca_host = 'localhost'
-    ca_port = 8889
+    ca_port = 7070
 
     sign_csr(ca_host, ca_port)
     server_host = 'localhost'
-    server_port = 7776
+    server_port = 6969
     server_name = "server.com"
 
     # Utwórz kontekst SSL/TLS dla klienta

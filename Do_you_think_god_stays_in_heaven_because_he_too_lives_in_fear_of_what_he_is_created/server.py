@@ -74,12 +74,12 @@ def request_sign_csr(ca_host, ca_port):
 
 def main():
     HOST = 'localhost'
-    PORT = 7776
+    PORT = 6969
     ca_host = 'localhost'
-    ca_port = 8889
+    ca_port = 7070
 
     request_sign_csr(ca_host, ca_port)
-    #socket.setdefaulttimeout(5)
+    # socket.setdefaulttimeout(5)
     # Set up the SSL context
     server_context = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
     server_context.load_cert_chain(certfile="server.crt", keyfile="server.key")
@@ -106,14 +106,17 @@ def main():
     # A dictionary to store user sessions
     user_sessions = {}
 
+
     def handle_client(client_socket):
+
         try:
             request = client_socket.recv(4096)
             if not request:
                 return False
-            pass_data = json.loads(request)
             conn = sqlite3.connect('cool_database.db')
             cur = conn.cursor()
+            pass_data = json.loads(request)
+
             print(pass_data)
 
             if pass_data['header'] == 'login':
@@ -199,7 +202,7 @@ def main():
                                 print('ezzzzzzz')
                                 target_socket = user_sessions[target_id]
                                 target_socket.sendall(f'calling {user_id}'.encode())
-                                print('ts',target_socket)
+                                print('ts', target_socket)
 
                                 ip_address, port = target_socket.getpeername()
                                 print(ip_address, port)
@@ -220,6 +223,8 @@ def main():
                             break
                     # Remove user session upon disconnection
                     del user_sessions[user_id]
+                    cur.execute('UPDATE users SET status = ? WHERE id = ?', (1, id))
+                    conn.commit()
                     cur.close()
                     conn.close()
                     client_socket.sendall("Disconnected".encode())
@@ -227,7 +232,7 @@ def main():
                     client_socket.sendall("login fail".encode())
 
             elif pass_data['header'] == 'register':
-                # Simulate a user registration (for demonstration purposes)
+
                 client_socket.sendall("register".encode())
 
             return True
@@ -235,6 +240,7 @@ def main():
         except Exception as e:
             print(f"Error: {e}")
             return False
+
 
     def handle_client_thread(client_socket, client_address):
         print(f"Accepted new connection from {client_address}")

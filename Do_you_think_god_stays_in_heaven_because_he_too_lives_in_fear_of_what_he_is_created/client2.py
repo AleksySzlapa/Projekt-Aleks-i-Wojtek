@@ -137,11 +137,11 @@ def decrypt(key, ciphertext, tag, nonce):
 
 def main():
     ca_host = 'localhost'
-    ca_port = 8889
+    ca_port = 7070
 
     sign_csr(ca_host, ca_port)
     server_host = 'localhost'
-    server_port = 7776
+    server_port = 6969
     server_name = "server.com"
 
     # Utwórz kontekst SSL/TLS dla klienta
@@ -306,7 +306,6 @@ def main():
                         with socket.create_connection((address[0], int(address[1]))) as friend_socket:
                             with friend_context.wrap_socket(friend_socket) as ssl_friend_socket:
 
-
                                 ssl_friend_socket.sendall('call 2s'.encode())
                                 isAccpet = ssl_friend_socket.recv(4096).decode()
                                 if isAccpet == 'conn dec':
@@ -367,9 +366,7 @@ def main():
                         ssl_socket.sendall('END'.encode())
                         ssl_socket.close()
 
-
-
-    listener_thread.join()
+                listener_thread.join()
 
 
 if __name__ == "__main__":
