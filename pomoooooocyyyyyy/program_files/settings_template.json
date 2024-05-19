@@ -1,0 +1,5 @@
+{
+  "bool": false,
+  "int": 1.0,
+  "menu": {"value": 0, "list": ["var1", "var2"]}
+}
