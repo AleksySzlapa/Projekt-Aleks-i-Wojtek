@@ -198,9 +198,9 @@ def main():
         with client_context.wrap_socket(client_socket, server_hostname=server_name) as ssl_socket:
             ssl.match_hostname(ssl_socket.getpeercert(), server_name)
             ssl_socket.sendall(json.dumps({'header': 'login', 'username': 'user', 'password': "1"}).encode())
-
+            print('sex')
             info = ssl_socket.recv(4096).decode()
-
+            print(info)
             if info == "You login":
                 print(info)
                 while True:

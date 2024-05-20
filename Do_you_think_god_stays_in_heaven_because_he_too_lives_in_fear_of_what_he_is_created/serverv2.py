@@ -183,14 +183,12 @@ def main():
                                     (username, ph.hash(password)))
                         conn.commit()
                         socket.sendall("register success".encode())
+                        handle_something(client_socket)
                     cur.close()
                     conn.close()
                 except Exception as e:
                     print(f"Error with register: {e}")
-
-
-
-            try:
+            def handle_something(client_socket):
                 request = client_socket.recv(4096)
                 if not request:
                     return False
@@ -199,6 +197,8 @@ def main():
                     handle_login(pass_data, client_socket)
                 elif pass_data['header'] == 'register':
                     handle_register(pass_data, client_socket)
+            try:
+                handle_something(client_socket)
             except Exception as e:
                 print(f"Error: {e}")
                 return False
