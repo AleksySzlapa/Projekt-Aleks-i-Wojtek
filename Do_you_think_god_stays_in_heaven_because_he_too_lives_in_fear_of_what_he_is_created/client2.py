@@ -1,18 +1,14 @@
 import json
-import secrets
 import socket
 import ssl
 import threading
-import time
 from hashlib import sha256
 
 from Crypto.Cipher import AES
-from argon2 import PasswordHasher
 from cryptography import x509
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
-from sympy import randprime, primitive_root
 
 
 def generate_private_key():
@@ -74,40 +70,6 @@ def sign_csr(ca_host, ca_port):
                 f.close()
 
 
-def login(username, password):
-    ph = PasswordHasher()
-    data = {"header": "login", 'username': username, 'password': password}
-    # hashed_password = ph.hash(password)
-    data = json.dumps(data, indent=4)
-    return data
-
-
-def register(username, password, password_again):
-    ph = PasswordHasher()
-    data = {"header": "register"}
-    # hashed_password = ph.hash(password)
-    if password != password_again:
-        return None
-    data['username'] = username
-    data['password'] = password
-    data = json.dumps(data, indent=4)
-    return data
-
-
-def Sisyphus(option, ss_socket, username, password, password_again):
-    if option == "l":
-        login_pass = login(username, password)
-        print(login_pass)
-        ss_socket.sendall(login_pass.encode())
-    else:
-        while True:
-            register_pass = register(username, password, password_again)
-            if register_pass is not None:
-                ss_socket.sendall(register_pass.encode())
-                break
-        print(register_pass)
-
-
 def generate_AES_key(s):
     dh_s_bytes = s.to_bytes((s.bit_length() + 7) // 8, 'big')
 
@@ -135,6 +97,53 @@ def decrypt(key, ciphertext, tag, nonce):
         print("Key incorrect or message corrupted")
 
 
+def connect_waiting(server_socket, ip, port):
+    try:
+        print('ipw', ip, port)
+        friend_waiting_context = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
+        friend_waiting_context.load_cert_chain(certfile="client2.crt", keyfile="client2.key")
+        friend_waiting_context.load_verify_locations(cafile="client2_ca.crt")
+        friend_waiting_context.verify_mode = ssl.CERT_REQUIRED
+        friend_waiting_context.check_hostname = False
+
+        friend_waiting_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        friend_waiting_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        friend_waiting_socket.bind((ip, int(port)))
+        print('Bound to IP', ip, 'Port', port)
+        friend_waiting_socket.listen(5)
+
+        with friend_waiting_socket:
+            with friend_waiting_context.wrap_socket(friend_waiting_socket,
+                                                    server_side=True) as ssl_friend_waiting_socket:
+                friend_socket, friend_address = ssl_friend_waiting_socket.accept()
+                with friend_socket:
+                    friend_username = friend_socket.recv(4096).decode()
+                    friend_ip, friend_port = friend_socket.getpeername()
+                    print('Received connection from', friend_ip, friend_port)
+                    server_socket.sendall('cc'.encode())
+                    server_socket.sendall(f'{friend_username}'.encode())
+
+                    real_friend_ip = server_socket.recv(4096).decode()
+                    real_friend_ip = server_socket.recv(4096).decode()
+
+                    if real_friend_ip == 'w':
+
+                        friend_socket.close()
+
+                    else:
+                        print(friend_ip, real_friend_ip)
+                        if friend_ip != real_friend_ip:
+
+                            friend_socket.close()
+                        else:
+
+                            friend_socket.sendall('ping'.encode())
+                            print(friend_socket.recv(4096).decode())
+                            friend_socket.close()
+    except Exception as e:
+        print(f"Error in connect_waiting: {e}")
+
+
 def main():
     ca_host = 'localhost'
     ca_port = 7070
@@ -154,219 +163,34 @@ def main():
 
     # client2_context.load_verify_locations(cafile="ca.crt")
     client2_context.load_verify_locations(cafile="client2_ca.crt")
+
+    # Create a synchronization event
+    login_event = threading.Event()
+
     # Utwórz połączenie TCP i nawiaż połączenie SSL/TLS z serwerem
     with socket.create_connection((server_host, server_port)) as client2_socket:
+
         local_ip, local_port = client2_socket.getsockname()
+        print('local', local_ip, local_port)
         with client2_context.wrap_socket(client2_socket, server_hostname=server_name) as ssl_socket:
             ssl.match_hostname(ssl_socket.getpeercert(), server_name)
-            option = 'l'  # input("select l or r: ")
-
-            Sisyphus(option, ssl_socket, "2s", "2", "2")
+            ssl_socket.sendall(json.dumps({'header': 'login', 'username': 'user2', 'password': "2"}).encode())
             info = ssl_socket.recv(4096).decode()
-            print(info)
+
             if info == "You login":
-                # Funkcja do obsługi komunikacji ze zdalnym serwerem
-                def communicate_with_friend(ssl_socket):
-                    server_context = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
-                    server_context.load_cert_chain(certfile="client.crt", keyfile="client.key")
-                    server_context.load_verify_locations(cafile="client_ca.crt")
-                    server_context.verify_mode = ssl.CERT_REQUIRED
-                    server_context.check_hostname = False  # Disable hostname checking for server side
+                print(info)
+                # Set the event to signal that login was successful
+                login_event.set()
 
-                    server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                    server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-                    server_socket.bind((local_ip, local_port))
-                    server_socket.listen(5)
+                thread = threading.Thread(target=connect_waiting, args=(ssl_socket, local_ip, local_port,))
+                thread.start()
 
-                    with server_socket:
-                        with server_context.wrap_socket(server_socket, server_side=True) as ssl_server_socket:
-                            client_socket, client_address = ssl_server_socket.accept()
-                            with client_socket:
-
-                                data = client_socket.recv(4096).decode().split(" ")
-                                print('data', data)
-                                ssl_socket.sendall('check'.encode())
-                                ssl_socket.sendall(data[1].encode())
-                                what = ssl_socket.recv(4096).decode()
-                                ip = ssl_socket.recv(4096).decode()
-                                print(ip)
-                                ip_address, port = client_socket.getpeername()
-
-                                print('ip2', ip_address)
-                                if ip == 'run':
-                                    print('czemu')
-                                    client_socket.close()
-                                ip = ip.split(":")
-                                print("whh", ip[0], ip_address)
-                                if ip[0] != ip_address:
-                                    print('czemu2')
-                                    client_socket.close()
-                                else:
-                                    dec = input(f"{data[1]} is calling y/n:")
-                                    if dec == 'n':
-                                        client_socket.sendall('conn dec'.encode())
-                                    else:
-                                        client_socket.sendall('conn act'.encode())
-                                        print('conn act')
-                                        data = client_socket.recv(4096).decode()
-                                        print('data', data)
-                                        data = json.loads(data)
-                                        p = data['p']
-                                        g = data['g']
-                                        b = secrets.randbits(8)
-                                        print('START B')
-                                        B = g ** b % p
-                                        print('END B')
-                                        client_socket.sendall(str(B).encode())
-                                        A = client_socket.recv(4096).decode()
-                                        s = int(A) ** b % p
-                                        print('s', s)
-                                        key = generate_AES_key(s)
-
-                                        def send_message(key, text):
-
-                                            ciphertext, tag, nonce = encrypt(key, text.encode())
-
-                                            client_socket.sendall(ciphertext)
-                                            client_socket.sendall(tag)
-                                            client_socket.sendall(nonce)
-
-                                        def receive_message(key):
-                                            ciphertext = client_socket.recv(4096)
-                                            tag = client_socket.recv(4096)
-                                            nonce = client_socket.recv(4096)
-
-                                            text = decrypt(key, ciphertext, tag, nonce)
-                                            return text
-
-                                        def handle_sending(key):
-                                            while True:
-                                                message = input(f"You: ")
-                                                send_message(key, message)
-
-                                        def handle_receiving(key):
-                                            while True:
-                                                message = receive_message(key)
-                                                print(f"Friend: {message.decode()}")
-
-                                        sending_thread = threading.Thread(target=handle_sending, args=(key,))
-                                        receiving_thread = threading.Thread(target=handle_receiving, args=(key,))
-
-                                        sending_thread.start()
-                                        receiving_thread.start()
-
-                                        sending_thread.join()
-                                        receiving_thread.join()
-
-                # Rozpocznij nasłuchiwanie w oddzielnym wątku
-                listener_thread = threading.Thread(target=communicate_with_friend, args=(ssl_socket,))
-                listener_thread.start()
                 while True:
+                    info = ''
+                    if info == 'cr':
+                        pass
 
-                    # Pozwól użytkownikowi na interakcję
-                    info = input('Command: ')
-                    # Obsłuż różne komendy użytkownika
-                    if info == 'END':
-                        ssl_socket.sendall('END'.encode())
-                        ssl_socket.close()
-                        break
-                    elif info.startswith('connect_request'):
-
-                        # Obsługa połączeń
-
-                        ssl_socket.sendall(info.encode())
-                    elif info == 'f':
-                        ssl_socket.sendall("friends".encode())
-                        friends_username_list = ssl_socket.recv(4096).decode()
-                        friends_requests_username_list = ssl_socket.recv(4096).decode()
-                        print('friends', friends_username_list)
-                        print('requests', friends_requests_username_list)
-                    elif info == 'ad':
-                        ssl_socket.sendall("add_friend".encode())
-                        ssl_socket.sendall('4s'.encode())
-                    elif info == 'aco':
-                        ssl_socket.sendall('acore'.encode())
-                        data = ['4s', 0]
-                        data = json.dumps(data)
-                        ssl_socket.sendall(data.encode())
-                    elif info == 'cr':
-                        print('one')
-                        ssl_socket.sendall("connect_request".encode())
-                        ssl_socket.sendall("1s".encode())
-                        print('two')
-                        address = ssl_socket.recv(4096).decode()
-                        print('add', address)
-                        address = address.split(":")
-                        time.sleep(3)
-                        friend_context = ssl.create_default_context(ssl.Purpose.SERVER_AUTH)
-                        friend_context.load_cert_chain(certfile="client.crt", keyfile="client.key")
-                        friend_context.load_verify_locations(cafile="client_ca.crt")
-                        friend_context.verify_mode = ssl.CERT_REQUIRED
-                        friend_context.check_hostname = False  # Disable hostname checking for server side
-                        with socket.create_connection((address[0], int(address[1]))) as friend_socket:
-                            with friend_context.wrap_socket(friend_socket) as ssl_friend_socket:
-
-                                ssl_friend_socket.sendall('call 2s'.encode())
-                                isAccpet = ssl_friend_socket.recv(4096).decode()
-                                if isAccpet == 'conn dec':
-                                    ssl_friend_socket.close()
-                                else:
-                                    p = randprime(10 ** 19, 10 ** 20)
-
-                                    g = primitive_root(p)
-
-                                    a = secrets.randbits(20)
-
-                                    ssl_friend_socket.sendall(json.dumps({'p': p, 'g': g}).encode())
-
-                                    B = ssl_friend_socket.recv(4096).decode()
-
-                                    s = int(B) ** a % p
-
-                                    A = g ** a % p
-                                    ssl_friend_socket.sendall(str(A).encode())
-
-                                    key = generate_AES_key(s)
-
-                                    def send_message(key, text):
-
-                                        ciphertext, tag, nonce = encrypt(key, text.encode())
-
-                                        ssl_friend_socket.sendall(ciphertext)
-                                        ssl_friend_socket.sendall(tag)
-                                        ssl_friend_socket.sendall(nonce)
-
-                                    def receive_message(key):
-                                        ciphertext = ssl_friend_socket.recv(4096)
-                                        tag = ssl_friend_socket.recv(4096)
-                                        nonce = ssl_friend_socket.recv(4096)
-
-                                        text = decrypt(key, ciphertext, tag, nonce)
-                                        return text
-
-                                    def handle_sending(key):
-                                        while True:
-                                            message = input(f"You: ")
-                                            send_message(key, message)
-
-                                    def handle_receiving(key):
-                                        while True:
-                                            message = receive_message(key)
-                                            print(f"Friend: {message.decode()}")
-
-                                    sending_thread = threading.Thread(target=handle_sending, args=(key,))
-                                    receiving_thread = threading.Thread(target=handle_receiving, args=(key,))
-
-                                    sending_thread.start()
-                                    receiving_thread.start()
-
-                                    sending_thread.join()
-                                    receiving_thread.join()
-                    elif info == 'END':
-                        ssl_socket.sendall('END'.encode())
-                        ssl_socket.close()
-
-                listener_thread.join()
+                thread.join()
 
 
 if __name__ == "__main__":

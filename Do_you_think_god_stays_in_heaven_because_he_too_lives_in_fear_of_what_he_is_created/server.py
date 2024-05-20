@@ -232,14 +232,27 @@ def main():
                     client_socket.sendall("login fail".encode())
 
             elif pass_data['header'] == 'register':
-
+                ph = PasswordHasher()
+                cur.execute('SELECT username FROM users')
+                usernames = cur.fetchall()
+                if pass_data["username"] in usernames:
+                    client_socket.sendall("username exist".encode())
+                    return
+                hashed_password = ph.hash(pass_data["password"])
+                cur.execute('INSERT INTO users (username, password) VALUES (?, ?)',
+                            (pass_data["username"], hashed_password))
+                conn.commit()
+                client_socket.sendall("register success".encode())
                 client_socket.sendall("register".encode())
 
-            return True
+
 
         except Exception as e:
             print(f"Error: {e}")
             return False
+
+
+
 
 
     def handle_client_thread(client_socket, client_address):
