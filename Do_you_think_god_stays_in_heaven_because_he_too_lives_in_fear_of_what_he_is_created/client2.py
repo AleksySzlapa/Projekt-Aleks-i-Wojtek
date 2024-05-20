@@ -118,77 +118,85 @@ def connect_waiting(server_socket, ip, port):
                                                     server_side=True) as ssl_friend_waiting_socket:
                 friend_socket, friend_address = ssl_friend_waiting_socket.accept()
                 with friend_socket:
-                    # friend_username = friend_socket.recv(4096).decode()
-                    # friend_ip, friend_port = friend_socket.getpeername()
-                    # print('Received connection from', friend_ip, friend_port)
-                    # server_socket.sendall('cc'.encode())
-                    # server_socket.sendall(f'{friend_username}'.encode())
-                    #
-                    # real_friend_ip = server_socket.recv(4096).decode()
-                    # real_friend_ip = server_socket.recv(4096).decode()
-                    #
-                    # print(friend_ip, real_friend_ip)
-                    # if real_friend_ip == 'w':
-                    #     print(11)
-                    #     friend_socket.close()
-                    #
-                    # else:
-                    #     print(friend_ip, real_friend_ip)
-                    #     if friend_ip != real_friend_ip:
-                    #
-                    #         friend_socket.close()
-                    #     else:
-                            print('dzala')
-                            data = friend_socket.recv(4096).decode()
-                            print('data', data)
-                            data = json.loads(data)
-                            p = data['p']
-                            g = data['g']
-                            b = secrets.randbits(8)
-                            print('START B')
-                            B = g ** b % p
-                            print('END B')
-                            print(B)
-                            friend_socket.sendall(str(B).encode())
-                            A = friend_socket.recv(4096).decode()
-                            s = int(A) ** b % p
-                            print('s', s)
-                            key = generate_AES_key(s)
+                    firend_username = friend_socket.recv(4096)
+                    print(firend_username)
+                    dec = input("y/n: ")
+                    if dec == "n":
+                        friend_socket.sendall("n".encode())
+                        friend_socket.close()
+                    else:
+                        friend_socket.sendall("y".encode())
+                        # friend_username = friend_socket.recv(4096).decode()
+                        # friend_ip, friend_port = friend_socket.getpeername()
+                        # print('Received connection from', friend_ip, friend_port)
+                        # server_socket.sendall('cc'.encode())
+                        # server_socket.sendall(f'{friend_username}'.encode())
+                        #
+                        # real_friend_ip = server_socket.recv(4096).decode()
+                        # real_friend_ip = server_socket.recv(4096).decode()
+                        #
+                        # print(friend_ip, real_friend_ip)
+                        # if real_friend_ip == 'w':
+                        #     print(11)
+                        #     friend_socket.close()
+                        #
+                        # else:
+                        #     print(friend_ip, real_friend_ip)
+                        #     if friend_ip != real_friend_ip:
+                        #
+                        #         friend_socket.close()
+                        #     else:
+                        print('dzala')
+                        data = friend_socket.recv(4096).decode()
+                        print('data', data)
+                        data = json.loads(data)
+                        p = data['p']
+                        g = data['g']
+                        b = secrets.randbits(8)
+                        print('START B')
+                        B = g ** b % p
+                        print('END B')
+                        print(B)
+                        friend_socket.sendall(str(B).encode())
+                        A = friend_socket.recv(4096).decode()
+                        s = int(A) ** b % p
+                        print('s', s)
+                        key = generate_AES_key(s)
 
-                            def send_message(key, text):
+                        def send_message(key, text):
 
-                                ciphertext, tag, nonce = encrypt(key, text.encode())
+                            ciphertext, tag, nonce = encrypt(key, text.encode())
 
-                                friend_socket.sendall(ciphertext)
-                                friend_socket.sendall(tag)
-                                friend_socket.sendall(nonce)
+                            friend_socket.sendall(ciphertext)
+                            friend_socket.sendall(tag)
+                            friend_socket.sendall(nonce)
 
-                            def receive_message(key):
-                                ciphertext = friend_socket.recv(4096)
-                                tag = friend_socket.recv(4096)
-                                nonce = friend_socket.recv(4096)
+                        def receive_message(key):
+                            ciphertext = friend_socket.recv(4096)
+                            tag = friend_socket.recv(4096)
+                            nonce = friend_socket.recv(4096)
 
-                                text = decrypt(key, ciphertext, tag, nonce)
-                                return text
+                            text = decrypt(key, ciphertext, tag, nonce)
+                            return text
 
-                            def handle_sending(key):
-                                while True:
-                                    message = input(f"You: ")
-                                    send_message(key, message)
+                        def handle_sending(key):
+                            while True:
+                                message = input(f"You: ")
+                                send_message(key, message)
 
-                            def handle_receiving(key):
-                                while True:
-                                    message = receive_message(key)
-                                    print(f"Friend: {message.decode()}")
+                        def handle_receiving(key):
+                            while True:
+                                message = receive_message(key)
+                                print(f"Friend: {message.decode()}")
 
-                            sending_thread = threading.Thread(target=handle_sending, args=(key,))
-                            receiving_thread = threading.Thread(target=handle_receiving, args=(key,))
+                        sending_thread = threading.Thread(target=handle_sending, args=(key,))
+                        receiving_thread = threading.Thread(target=handle_receiving, args=(key,))
 
-                            sending_thread.start()
-                            receiving_thread.start()
+                        sending_thread.start()
+                        receiving_thread.start()
 
-                            sending_thread.join()
-                            receiving_thread.join()
+                        sending_thread.join()
+                        receiving_thread.join()
     except Exception as e:
         print(f"Error in connect_waiting: {e}")
 

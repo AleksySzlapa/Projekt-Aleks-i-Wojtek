@@ -123,57 +123,62 @@ def connect_request(friend_username, username, server_socket):
 
         with socket.create_connection((friend_ip, int(friend_port))) as friend_socket:
             with friend_context.wrap_socket(friend_socket) as ssl_friend_socket:
-                p = randprime(10 ** 19, 10 ** 20)
+                ssl_friend_socket.sendall(username.encode())
+                dec = ssl_friend_socket.recv(4096).decode()
+                if dec == "n":
+                    ssl_friend_socket.close()
+                else:
+                    p = randprime(10 ** 19, 10 ** 20)
 
-                g = primitive_root(p)
+                    g = primitive_root(p)
 
-                a = secrets.randbits(20)
+                    a = secrets.randbits(20)
 
-                ssl_friend_socket.sendall(json.dumps({'p': p, 'g': g}).encode())
+                    ssl_friend_socket.sendall(json.dumps({'p': p, 'g': g}).encode())
 
-                B = ssl_friend_socket.recv(4096).decode()
+                    B = ssl_friend_socket.recv(4096).decode()
 
-                s = int(B) ** a % p
+                    s = int(B) ** a % p
 
-                A = g ** a % p
-                ssl_friend_socket.sendall(str(A).encode())
+                    A = g ** a % p
+                    ssl_friend_socket.sendall(str(A).encode())
 
-                key = generate_AES_key(s)
+                    key = generate_AES_key(s)
 
-                def send_message(key, text):
+                    def send_message(key, text):
 
-                    ciphertext, tag, nonce = encrypt(key, text.encode())
+                        ciphertext, tag, nonce = encrypt(key, text.encode())
 
-                    ssl_friend_socket.sendall(ciphertext)
-                    ssl_friend_socket.sendall(tag)
-                    ssl_friend_socket.sendall(nonce)
+                        ssl_friend_socket.sendall(ciphertext)
+                        ssl_friend_socket.sendall(tag)
+                        ssl_friend_socket.sendall(nonce)
 
-                def receive_message(key):
-                    ciphertext = ssl_friend_socket.recv(4096)
-                    tag = ssl_friend_socket.recv(4096)
-                    nonce = ssl_friend_socket.recv(4096)
+                    def receive_message(key):
+                        ciphertext = ssl_friend_socket.recv(4096)
+                        tag = ssl_friend_socket.recv(4096)
+                        nonce = ssl_friend_socket.recv(4096)
 
-                    text = decrypt(key, ciphertext, tag, nonce)
-                    return text
+                        text = decrypt(key, ciphertext, tag, nonce)
+                        return text
 
-                def handle_sending(key):
-                    while True:
-                        message = input(f"You: ")
-                        send_message(key, message)
+                    def handle_sending(key):
+                        while True:
+                            message = input(f"You: ")
+                            send_message(key, message)
 
-                def handle_receiving(key):
-                    while True:
-                        message = receive_message(key)
-                        print(f"Friend: {message.decode()}")
+                    def handle_receiving(key):
+                        while True:
+                            message = receive_message(key)
+                            print(f"Friend: {message.decode()}")
 
-                sending_thread = threading.Thread(target=handle_sending, args=(key,))
-                receiving_thread = threading.Thread(target=handle_receiving, args=(key,))
+                    sending_thread = threading.Thread(target=handle_sending, args=(key,))
+                    receiving_thread = threading.Thread(target=handle_receiving, args=(key,))
 
-                sending_thread.start()
-                receiving_thread.start()
+                    sending_thread.start()
+                    receiving_thread.start()
 
-                sending_thread.join()
-                receiving_thread.join()
+                    sending_thread.join()
+                    receiving_thread.join()
 
 
 def main():
