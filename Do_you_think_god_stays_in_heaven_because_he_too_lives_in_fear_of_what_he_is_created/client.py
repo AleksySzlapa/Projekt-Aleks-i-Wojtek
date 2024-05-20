@@ -1,4 +1,5 @@
 import json
+import secrets
 import socket
 import ssl
 import threading
@@ -11,6 +12,7 @@ from cryptography import x509
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
+from sympy import randprime, primitive_root
 
 
 def generate_private_key():
@@ -121,10 +123,57 @@ def connect_request(friend_username, username, server_socket):
 
         with socket.create_connection((friend_ip, int(friend_port))) as friend_socket:
             with friend_context.wrap_socket(friend_socket) as ssl_friend_socket:
-                ssl_friend_socket.sendall(username.encode())
-                print(ssl_friend_socket.recv(4096).decode())
-                ssl_friend_socket.sendall('pong'.encode())
-                ssl_friend_socket.close()
+                p = randprime(10 ** 19, 10 ** 20)
+
+                g = primitive_root(p)
+
+                a = secrets.randbits(20)
+
+                ssl_friend_socket.sendall(json.dumps({'p': p, 'g': g}).encode())
+
+                B = ssl_friend_socket.recv(4096).decode()
+
+                s = int(B) ** a % p
+
+                A = g ** a % p
+                ssl_friend_socket.sendall(str(A).encode())
+
+                key = generate_AES_key(s)
+
+                def send_message(key, text):
+
+                    ciphertext, tag, nonce = encrypt(key, text.encode())
+
+                    ssl_friend_socket.sendall(ciphertext)
+                    ssl_friend_socket.sendall(tag)
+                    ssl_friend_socket.sendall(nonce)
+
+                def receive_message(key):
+                    ciphertext = ssl_friend_socket.recv(4096)
+                    tag = ssl_friend_socket.recv(4096)
+                    nonce = ssl_friend_socket.recv(4096)
+
+                    text = decrypt(key, ciphertext, tag, nonce)
+                    return text
+
+                def handle_sending(key):
+                    while True:
+                        message = input(f"You: ")
+                        send_message(key, message)
+
+                def handle_receiving(key):
+                    while True:
+                        message = receive_message(key)
+                        print(f"Friend: {message.decode()}")
+
+                sending_thread = threading.Thread(target=handle_sending, args=(key,))
+                receiving_thread = threading.Thread(target=handle_receiving, args=(key,))
+
+                sending_thread.start()
+                receiving_thread.start()
+
+                sending_thread.join()
+                receiving_thread.join()
 
 
 def main():

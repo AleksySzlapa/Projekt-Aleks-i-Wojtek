@@ -128,8 +128,9 @@ def main():
                         elif option == 'cc':
 
                             friend_username_cc = socket.recv(4096).decode()
-
-                            if friend_username_cc in user_sessions.keys():
+                            print(friend_username_cc, list(user_sessions.keys()))
+                            print(user_sessions)
+                            if friend_username_cc in list(user_sessions.keys()):
                                 friend_socket = user_sessions[friend_username_cc]
                                 try:
                                     ip_address, port = friend_socket.getpeername()
