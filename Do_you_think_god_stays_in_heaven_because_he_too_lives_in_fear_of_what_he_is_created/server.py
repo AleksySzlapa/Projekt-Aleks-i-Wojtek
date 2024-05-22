@@ -3,7 +3,6 @@ import socket
 import sqlite3
 import ssl
 import threading
-import re
 
 import select
 from argon2 import PasswordHasher
@@ -11,6 +10,8 @@ from cryptography import x509
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
+
+un = ""
 
 
 def generate_private_key():
@@ -51,17 +52,12 @@ def save_cert_to_file_using_pem(cert, filename):
 
 
 def request_sign_csr(ca_host, ca_port):
-    # Generate private key and CSR
     private_key = generate_private_key()
     csr = generate_csr(private_key, "server.com")
     save_key_to_file_using_pem(private_key, 'server')
-    # Connect to CA server
     with socket.create_connection((ca_host, ca_port)) as ca_socket:
-        # Wrap the socket for SSL
         with ssl.wrap_socket(ca_socket, ssl_version=ssl.PROTOCOL_TLS) as ssl_ca_socket:
-            # Send CSR
             ssl_ca_socket.sendall(csr.public_bytes(encoding=serialization.Encoding.PEM))
-            # Receive signed certificate
             signed_cert_pem = ssl_ca_socket.recv(4096)
             ca_cert = ssl_ca_socket.recv(4096)
             with open(f"server.crt", "wb") as f:
@@ -79,15 +75,12 @@ def main():
     ca_port = 7070
 
     request_sign_csr(ca_host, ca_port)
-    # socket.setdefaulttimeout(5)
-    # Set up the SSL context
     server_context = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
     server_context.load_cert_chain(certfile="server.crt", keyfile="server.key")
     server_context.check_hostname = False
     server_context.verify_mode = ssl.CERT_REQUIRED
     server_context.load_verify_locations(cafile="server_ca.crt")
 
-    # Create a TCP/IP socket
     server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     server_socket.bind((HOST, PORT))
@@ -95,165 +88,138 @@ def main():
 
     print(f"Server listening on {HOST}:{PORT}")
 
-    # Wrap the server socket with SSL
     ssl_server_socket = server_context.wrap_socket(server_socket, server_side=True)
 
-    # List of sockets to monitor for incoming connections
     sockets_list = [ssl_server_socket]
 
-    # A dictionary to store client addresses and sockets
     clients = {}
-    # A dictionary to store user sessions
     user_sessions = {}
 
-
     def handle_client(client_socket):
-
         try:
-            request = client_socket.recv(4096)
-            if not request:
-                return False
-            conn = sqlite3.connect('cool_database.db')
-            cur = conn.cursor()
-            pass_data = json.loads(request)
+            def verified_user(socket, username):
+                while True:
+                    print("us", user_sessions)
+                    print("c", clients)
+                    try:
+                        option = socket.recv(4096).decode()
+                        if not option:
+                            break
+                        elif option == 'cr':
+                            friend_username = socket.recv(4096).decode()
+                            if friend_username in user_sessions:
+                                friend_socket = user_sessions[friend_username]
+                                try:
+                                    friend_socket.sendall(username.encode())
+                                    ip_address, port = friend_socket.getpeername()
+                                    socket.sendall(f"{ip_address}:{port}".encode())
+                                except Exception as e:
+                                    print(f"Error communicating with friend {friend_username}: {e}")
+                                    socket.sendall(f"error".encode())
+                                    break
+                            else:
+                                socket.sendall("offline".encode())
+                        elif option == 'cc':
 
-            print(pass_data)
+                            friend_username_cc = socket.recv(4096).decode()
+                            print(friend_username_cc, list(user_sessions.keys()))
+                            print(user_sessions)
+                            if friend_username_cc in list(user_sessions.keys()):
+                                friend_socket = user_sessions[friend_username_cc]
+                                try:
+                                    ip_address, port = friend_socket.getpeername()
 
-            if pass_data['header'] == 'login':
-                cur.execute('SELECT password, id FROM users WHERE username = ?', (pass_data["username"],))
-                user = cur.fetchone()
-                user_id = pass_data["username"]
-                if user:
-                    id = user[1]
-                    password = user[0]
-                    ph = PasswordHasher()
-                    if ph.verify(password, pass_data["password"]):
-                        client_socket.sendall("You login".encode())
-                        cur.execute('UPDATE users SET status = ? WHERE id = ?', (1, id))
+                                    socket.sendall(f"{ip_address}".encode())
+                                except Exception as e:
+                                    print(f"Error getting peer name for friend {friend_username_cc}: {e}")
+                                    socket.send("error".encode())
+                                    break
+                            else:
+                                socket.sendall('w'.encode())
+                    except Exception as e:
+                        print(f'Error with  verified_user: {e}')
+                        break
+
+            def handle_login(data, socket, pass_data):
+                global un
+                try:
+                    print("w", pass_data)
+                    conn = sqlite3.connect('cool_database.db')
+                    cur = conn.cursor()
+                    cur.execute('SELECT username, password, id FROM users WHERE username = ?', (pass_data["username"],))
+
+                    data1 = cur.fetchone()
+                    if data1:
+                        db_username, db_password, user_id = data1
+                    else:
+                        client_socket.sendall("x".encode())
+                        handle_something(socket)
+                        return
+                    username, password = data["username"], data['password']
+                    print("what", username, password)
+                    print("www", db_username, db_password, user_id)
+                    if db_username:
+                        if db_username == username:
+                            ph = PasswordHasher()
+                            try:
+                                if ph.verify(db_password, password):
+                                    client_socket.sendall("You login".encode())
+                                    user_sessions[username] = socket
+                                    verified_user(socket, username)
+                                    un = username
+                            except Exception as e:
+                                client_socket.sendall("x1".encode())
+                                handle_something(socket)
+                                print(f"Error with password: {e}")
+
+                            finally:
+                                cur.close()
+                                conn.close()
+                except Exception as e:
+                    client_socket.sendall("x2".encode())
+                    handle_something(socket)
+                    print(f"Error with login: {e}")
+
+            def handle_register(data, socket):
+                try:
+                    conn = sqlite3.connect('cool_database.db')
+                    cur = conn.cursor()
+                    cur.execute('SELECT username FROM users ')
+                    usernames = cur.fetchall()
+                    username, password = data["username"], data['password']
+                    if username not in usernames:
+                        ph = PasswordHasher()
+                        cur.execute('INSERT INTO users (username, password) VALUES (?, ?)',
+                                    (username, ph.hash(password)))
                         conn.commit()
-                        user_sessions[user_id] = client_socket
-
-                    while True:
-                        info = client_socket.recv(4096).decode()
-                        if not info:
-                            break
-                        elif info == 'check':
-                            check_ip = client_socket.recv(4096).decode()
-                            print('check_ip', check_ip)
-                            if check_ip in user_sessions:
-                                check_ip_socket = user_sessions[check_ip]
-                                print(check_ip_socket)
-                                ip_address, port = check_ip_socket.getpeername()
-                                port = str(port)
-                                print((ip_address + ':' + port))
-                                client_socket.sendall((ip_address + ':' + port).encode())
-                            else:
-                                client_socket.sendall('run'.encode())
-                        elif info == "friends":
-                            cur.execute('SELECT user_1, user_2 FROM friends WHERE user_1 = ? OR user_2 = ?', (id, id))
-                            friends_list_data = cur.fetchall()
-                            friends_list = {friend[1] if friend[0] == id else friend[0] for friend in friends_list_data}
-                            friends_list_over_haeven = []
-                            for friend in friends_list:
-                                cur.execute('SELECT username, id, status FROM users WHERE id = ?', (friend,))
-                                friends_list_over_haeven.append(cur.fetchone())
-                            client_socket.sendall(json.dumps(friends_list_over_haeven).encode())
-                            cur.execute('SELECT user_1, user_2 FROM friends_requests WHERE user_2 = ?', (id,))
-                            friends_requests_list = cur.fetchall()
-                            friends_requests_list_over_haeven = []
-                            for friend_request in friends_requests_list:
-                                cur.execute('SELECT username, id FROM users WHERE id = ?', (friend_request[0],))
-                                friends_requests_list_over_haeven.append(cur.fetchone())
-                            client_socket.sendall(json.dumps(friends_requests_list_over_haeven).encode())
-
-                        elif info == "add_friend":
-                            new_friend_username = client_socket.recv(4096).decode()
-                            cur.execute('SELECT id FROM users WHERE username = ?', (new_friend_username,))
-                            friend_id = cur.fetchone()[0]
-                            cur.execute('SELECT * FROM friends_requests WHERE (user_1 = ? AND user_2 = ?)',
-                                        (id, friend_id))
-                            if not cur.fetchall():
-                                cur.execute('INSERT INTO friends_requests (user_1, user_2) VALUES (?, ?)',
-                                            (id, friend_id))
-                                conn.commit()
-
-                        elif info == 'acore':
-                            data = json.loads(client_socket.recv(4096))
-                            cur.execute('SELECT id FROM users WHERE username = ?', (data[0],))
-                            new_friend_id = cur.fetchone()[0]
-                            if data[1] == 0:
-                                cur.execute(
-                                    'UPDATE friends_requests SET isWaiting = ?, isAccept = ? WHERE (user_1 = ? AND user_2 = ?) AND isWaiting = 1',
-                                    (0, 0, id, new_friend_id)
-                                )
-                                conn.commit()
-                            elif data[1] == 1:
-                                cur.execute(
-                                    'UPDATE friends_requests SET isWaiting = ?, isAccept = ? WHERE (user_1 = ? AND user_2 = ?) AND isWaiting = 1',
-                                    (0, 1, id, new_friend_id)
-                                )
-                                cur.execute('INSERT INTO friends (user_1, user_2) VALUES (?, ?)', (id, new_friend_id))
-                                conn.commit()
-
-                        elif info == "connect_request":
-                            print('req', user_sessions)
-                            target_id = client_socket.recv(4096).decode()
-                            if target_id in user_sessions:
-                                print('ezzzzzzz')
-                                target_socket = user_sessions[target_id]
-                                target_socket.sendall(f'calling {user_id}'.encode())
-                                print('ts', target_socket)
-
-                                ip_address, port = target_socket.getpeername()
-                                print(ip_address, port)
-                                client_socket.sendall(f"{ip_address}:{port}:{target_id}".encode())
-                                print('done')
-                            else:
-                                client_socket.sendall("User not online".encode())
-
-                        elif info.startswith("connect_accept"):
-                            print('acc', user_sessions)
-                            target_id = info.split(" ")[1]
-                            if target_id in user_sessions:
-                                target_socket = user_sessions[target_id]
-                                target_socket.sendall(f"connect_accept from {id}".encode())
-                                client_socket.sendall(f"connect_accept to {target_id}".encode())
-
-                        elif info == 'END':
-                            break
-                    # Remove user session upon disconnection
-                    del user_sessions[user_id]
-                    cur.execute('UPDATE users SET status = ? WHERE id = ?', (1, id))
-                    conn.commit()
+                        socket.sendall("register success".encode())
+                        handle_something(client_socket)
                     cur.close()
                     conn.close()
-                    client_socket.sendall("Disconnected".encode())
-                else:
-                    client_socket.sendall("login fail".encode())
+                except Exception as e:
+                    print(f"Error with register: {e}")
 
-            elif pass_data['header'] == 'register':
-                ph = PasswordHasher()
-                cur.execute('SELECT username FROM users')
-                usernames = cur.fetchall()
-                if pass_data["username"] in usernames:
-                    client_socket.sendall("username exist".encode())
-                    return
-                hashed_password = ph.hash(pass_data["password"])
-                cur.execute('INSERT INTO users (username, password) VALUES (?, ?)',
-                            (pass_data["username"], hashed_password))
-                conn.commit()
-                client_socket.sendall("register success".encode())
-                client_socket.sendall("register".encode())
+            def handle_something(client_socket):
+                request = client_socket.recv(4096)
 
+                if not request:
+                    return False
+                print(request)
+                pass_data = json.loads(request)
+                print(pass_data)
+                if pass_data['header'] == 'login':
+                    print("login beg")
+                    handle_login(pass_data, client_socket, pass_data)
+                elif pass_data['header'] == 'register':
+                    handle_register(pass_data, client_socket)
 
-
+            try:
+                handle_something(client_socket)
+            except Exception as e:
+                print(f"Error: {e}")
+                return False
         except Exception as e:
             print(f"Error: {e}")
-            return False
-
-
-
-
 
     def handle_client_thread(client_socket, client_address):
         print(f"Accepted new connection from {client_address}")
@@ -262,6 +228,8 @@ def main():
         while handle_client(client_socket):
             pass
         sockets_list.remove(client_socket)
+        if un != "":
+            del user_sessions[un]
         del clients[client_socket]
         client_socket.close()
         print(f"Closed connection from {client_address}")
