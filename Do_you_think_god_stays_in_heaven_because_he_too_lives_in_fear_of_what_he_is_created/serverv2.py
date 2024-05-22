@@ -11,6 +11,8 @@ from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
 
+un = ""
+
 
 def generate_private_key():
     return rsa.generate_private_key(
@@ -50,17 +52,12 @@ def save_cert_to_file_using_pem(cert, filename):
 
 
 def request_sign_csr(ca_host, ca_port):
-    # Generate private key and CSR
     private_key = generate_private_key()
     csr = generate_csr(private_key, "server.com")
     save_key_to_file_using_pem(private_key, 'server')
-    # Connect to CA server
     with socket.create_connection((ca_host, ca_port)) as ca_socket:
-        # Wrap the socket for SSL
         with ssl.wrap_socket(ca_socket, ssl_version=ssl.PROTOCOL_TLS) as ssl_ca_socket:
-            # Send CSR
             ssl_ca_socket.sendall(csr.public_bytes(encoding=serialization.Encoding.PEM))
-            # Receive signed certificate
             signed_cert_pem = ssl_ca_socket.recv(4096)
             ca_cert = ssl_ca_socket.recv(4096)
             with open(f"server.crt", "wb") as f:
@@ -84,7 +81,6 @@ def main():
     server_context.verify_mode = ssl.CERT_REQUIRED
     server_context.load_verify_locations(cafile="server_ca.crt")
 
-    # Create a TCP/IP socket
     server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     server_socket.bind((HOST, PORT))
@@ -92,21 +88,19 @@ def main():
 
     print(f"Server listening on {HOST}:{PORT}")
 
-    # Wrap the server socket with SSL
     ssl_server_socket = server_context.wrap_socket(server_socket, server_side=True)
 
-    # List of sockets to monitor for incoming connections
     sockets_list = [ssl_server_socket]
 
-    # A dictionary to store client addresses and sockets
     clients = {}
-    # A dictionary to store user sessions
     user_sessions = {}
 
     def handle_client(client_socket):
         try:
             def verified_user(socket, username):
                 while True:
+                    print("us", user_sessions)
+                    print("c", clients)
                     try:
                         option = socket.recv(4096).decode()
                         if not option:
@@ -147,12 +141,23 @@ def main():
                         break
 
             def handle_login(data, socket, pass_data):
+                global un
                 try:
+                    print("w", pass_data)
                     conn = sqlite3.connect('cool_database.db')
                     cur = conn.cursor()
                     cur.execute('SELECT username, password, id FROM users WHERE username = ?', (pass_data["username"],))
-                    db_username, db_password, user_id = cur.fetchone()
+
+                    data1 = cur.fetchone()
+                    if data1:
+                        db_username, db_password, user_id = data1
+                    else:
+                        client_socket.sendall("x".encode())
+                        handle_something(socket)
+                        return
                     username, password = data["username"], data['password']
+                    print("what", username, password)
+                    print("www", db_username, db_password, user_id)
                     if db_username:
                         if db_username == username:
                             ph = PasswordHasher()
@@ -161,13 +166,18 @@ def main():
                                     client_socket.sendall("You login".encode())
                                     user_sessions[username] = socket
                                     verified_user(socket, username)
+                                    un = username
                             except Exception as e:
+                                client_socket.sendall("x1".encode())
+                                handle_something(socket)
                                 print(f"Error with password: {e}")
 
                             finally:
                                 cur.close()
                                 conn.close()
                 except Exception as e:
+                    client_socket.sendall("x2".encode())
+                    handle_something(socket)
                     print(f"Error with login: {e}")
 
             def handle_register(data, socket):
@@ -191,10 +201,14 @@ def main():
 
             def handle_something(client_socket):
                 request = client_socket.recv(4096)
+
                 if not request:
                     return False
+                print(request)
                 pass_data = json.loads(request)
+                print(pass_data)
                 if pass_data['header'] == 'login':
+                    print("login beg")
                     handle_login(pass_data, client_socket, pass_data)
                 elif pass_data['header'] == 'register':
                     handle_register(pass_data, client_socket)
@@ -214,6 +228,8 @@ def main():
         while handle_client(client_socket):
             pass
         sockets_list.remove(client_socket)
+        if un != "":
+            del user_sessions[un]
         del clients[client_socket]
         client_socket.close()
         print(f"Closed connection from {client_address}")

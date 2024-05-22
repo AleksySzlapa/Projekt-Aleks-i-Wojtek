@@ -141,7 +141,6 @@ def client_handler(client_socket, ca_certificate, ca_private_key):
     handle_request(client_socket, ca_certificate, ca_private_key)
 
 
-# Example usage
 def main():
     logging.basicConfig(level=logging.INFO)
     ca_host = 'localhost'
