@@ -3,7 +3,7 @@ Implementacja protokołu wymiany kluczy Diffiego-Hellmana - Realizacja protokoł
 
 Jak włączyć?
 
-the-world-is-falling-down branch,
+main branch,
 
 python 3.9,
 
